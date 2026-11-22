@@ -10,7 +10,9 @@ import {
   parseCSV,
   auditLeadData,
   cleanLeadData,
-  toCSV
+  toCSV,
+  listPresets,
+  WATERFALL_PRESETS
 } from '../src/index.js';
 
 const options = {
@@ -18,11 +20,58 @@ const options = {
   format: { type: 'string', default: 'text' },
   optimize: { type: 'boolean', default: false },
   clean: { type: 'boolean', default: false },
+  presets: { type: 'boolean', default: false },
+  usePreset: { type: 'string' },
   output: { type: 'string', short: 'o' },
   help: { type: 'boolean', short: 'h' }
 };
 
 const { values, positionals } = parseArgs({ options, allowPositionals: true });
+
+if (values.presets) {
+  const { providers, waterfalls } = listPresets();
+  console.log(`\n=== GTM Pipeline Audit: Provider & Waterfall Presets ===\n`);
+  console.log(`--- Standard Waterfall Presets ---`);
+  for (const wf of waterfalls) {
+    console.log(`  ID: ${wf.id}`);
+    console.log(`  Name: ${wf.name} (Stages: ${wf.stages.length})\n`);
+  }
+  console.log(`--- Industry Benchmark Providers ---`);
+  for (const p of providers) {
+    const policy = p.chargePolicy === 'per_hit' ? 'per match' : 'per attempt';
+    console.log(`  [${p.id}] ${p.name}: $${p.costPerCall}/${policy} (~${(p.hitRate * 100).toFixed(0)}% hit rate)`);
+  }
+  console.log(`\nRun with --usePreset <id> to audit or export a reference waterfall.\n`);
+  process.exit(0);
+}
+
+if (values.usePreset) {
+  const preset = WATERFALL_PRESETS[values.usePreset];
+  if (!preset) {
+    console.error(`Unknown preset "${values.usePreset}". Run with --presets to view available templates.`);
+    process.exit(1);
+  }
+
+  if (values.output) {
+    fs.writeFileSync(path.resolve(process.cwd(), values.output), JSON.stringify(preset, null, 2), 'utf8');
+    console.log(`\nPreset "${values.usePreset}" exported to ${values.output}\n`);
+    process.exit(0);
+  }
+
+  const result = analyzePipeline(preset);
+  if (values.format === 'markdown') {
+    console.log(generateMarkdownReport(result));
+  } else {
+    console.log(`\n=== GTM Pipeline Audit Preset: ${preset.name} ===\n`);
+    console.log(`Volume:               ${result.volume.toLocaleString()} records`);
+    console.log(`Total Projected Cost: $${result.totalCost.toFixed(2)}`);
+    console.log(`Effective Cost / Rec: $${result.effectiveCostPerRecord.toFixed(4)} per record`);
+    console.log(`Cost / Success Lead:  $${result.effectiveCostPerMatchedLead.toFixed(4)} per lead`);
+    console.log(`Match Rate:           ${(result.matchRate * 100).toFixed(1)}%\n`);
+    console.log(`Tip: Pass -o <file.json> to export this preset as a starting template.\n`);
+  }
+  process.exit(0);
+}
 
 if (values.help || (!values.file && positionals.length === 0)) {
   console.log(`
@@ -37,7 +86,9 @@ Options:
   --format          Output format: text | json | markdown (default: text)
   --optimize        Calculate automated optimization & projected budget savings (JSON only)
   --clean           Clean CSV lead list (remove personal freemails, generic inboxes, duplicates)
-  -o, --output      Save optimized JSON or cleaned CSV to a specified path
+  --presets         List built-in provider market rates and reference waterfall templates
+  --usePreset <id>  Inspect or export a reference waterfall template (e.g. b2b-email-discovery)
+  -o, --output      Save optimized JSON, cleaned CSV, or exported preset to a specified path
   -h, --help        Show this help message
 `);
   process.exit(0);
