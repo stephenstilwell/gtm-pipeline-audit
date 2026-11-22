@@ -15,6 +15,7 @@ Modern GTM engineering workflows rely heavily on cascading enrichment providers 
 - **JSON Pipeline Audit:** Evaluates waterfall fallback cascades, detects late filters, and models cost per input record vs. cost per successfully enriched lead.
 - **Automated Pipeline Optimizer (`--optimize`):** Automatically hoists qualification filters and reorders waterfalls by ascending cost-per-attempt, projecting net budget savings.
 - **CSV Lead Data Hygiene Audit:** Directly audits exported CSV batches (from Clay, Apollo, ZoomInfo, etc.) reporting column fill rates, personal freemail domains, generic role inboxes, and malformed phone numbers.
+- **Automated CSV Sanitizer (`--clean`):** Strips consumer freemails, generic role inboxes, and duplicate records to protect sender reputation and prevent wasted API/sequencing spend.
 - **Zero External Dependencies:** Built entirely with native Node.js ES modules and the built-in test runner.
 
 ## Quickstart
@@ -55,13 +56,21 @@ Phones Evaluated:  7
   2 records (28.6%) have fewer than 7 digits. These should be cleaned before passing to SDR dialers or SMS sequences.
 ```
 
-### 2. Audit Pipeline Architecture & Waterfalls (JSON)
+### 2. Clean & Sanitize Lead CSV Before Outbound
+
+Clean out invalid freemails, generic inboxes, and duplicates, outputting the clean leads:
+
+```sh
+node bin/cli.js examples/csv/leads-sample.csv --clean -o cleaned-leads.csv
+```
+
+### 3. Audit Pipeline Architecture & Waterfalls (JSON)
 
 ```sh
 node bin/cli.js examples/unoptimized-pipeline.json
 ```
 
-### 3. Automatically Optimize Pipeline Configuration
+### 4. Automatically Optimize Pipeline Configuration
 
 ```sh
 node bin/cli.js examples/unoptimized-pipeline.json --optimize
@@ -72,7 +81,7 @@ Save the optimized configuration to a new file:
 node bin/cli.js examples/unoptimized-pipeline.json --optimize -o examples/optimized-pipeline.json
 ```
 
-### 4. Run Unit Tests
+### 5. Run Unit Tests
 
 ```sh
 npm test

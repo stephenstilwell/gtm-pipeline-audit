@@ -1,10 +1,11 @@
 /**
  * GTM Pipeline Audit Engine
  * Evaluates waterfall order, cost efficiency, filter gating, waterfall cascade dynamics,
- * CSV lead data hygiene, and automated optimization recommendations for go-to-market outbound pipelines.
+ * CSV lead data hygiene, automated cleaning, and optimization for go-to-market outbound pipelines.
  */
 
 export { parseCSV, auditLeadData } from './csvAuditor.js';
+export { cleanLeadData, toCSV } from './csvCleaner.js';
 
 export function analyzePipeline(pipeline) {
   const name = pipeline.name || 'Untitled Pipeline';

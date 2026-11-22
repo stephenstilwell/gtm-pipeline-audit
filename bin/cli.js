@@ -8,13 +8,16 @@ import {
   comparePipelines,
   generateMarkdownReport,
   parseCSV,
-  auditLeadData
+  auditLeadData,
+  cleanLeadData,
+  toCSV
 } from '../src/index.js';
 
 const options = {
   file: { type: 'string', short: 'f' },
   format: { type: 'string', default: 'text' },
   optimize: { type: 'boolean', default: false },
+  clean: { type: 'boolean', default: false },
   output: { type: 'string', short: 'o' },
   help: { type: 'boolean', short: 'h' }
 };
@@ -33,7 +36,8 @@ Options:
   -f, --file        Path to input file (.json or .csv)
   --format          Output format: text | json | markdown (default: text)
   --optimize        Calculate automated optimization & projected budget savings (JSON only)
-  -o, --output      Save optimized output to a specified path
+  --clean           Clean CSV lead list (remove personal freemails, generic inboxes, duplicates)
+  -o, --output      Save optimized JSON or cleaned CSV to a specified path
   -h, --help        Show this help message
 `);
   process.exit(0);
@@ -47,31 +51,67 @@ try {
 
   if (fullPath.endsWith('.csv')) {
     const records = parseCSV(content);
-    const audit = auditLeadData(records);
 
-    if (values.format === 'json') {
-      console.log(JSON.stringify(audit, null, 2));
-    } else {
-      console.log(`\n=== GTM Lead Data Hygiene Audit ===\n`);
-      console.log(`File:              ${path.basename(fullPath)}`);
-      console.log(`Total Records:     ${audit.totalRecords.toLocaleString()}`);
-      console.log(`Emails Evaluated:  ${audit.summary.totalEmailsAnalyzed.toLocaleString()}`);
-      console.log(`Phones Evaluated:  ${audit.summary.totalPhonesAnalyzed.toLocaleString()}\n`);
+    if (values.clean) {
+      const cleanResult = cleanLeadData(records);
+      const cleanedCsv = toCSV(cleanResult.cleaned);
 
-      console.log(`--- Field Fill Rates ---`);
-      for (const [col, stats] of Object.entries(audit.fields)) {
-        const pct = ((stats.populated / audit.totalRecords) * 100).toFixed(1);
-        console.log(`  ${col.padEnd(20)}: ${stats.populated} populated (${pct}%)`);
+      if (values.output) {
+        fs.writeFileSync(path.resolve(process.cwd(), values.output), cleanedCsv, 'utf8');
       }
 
-      if (audit.issues.length > 0) {
-        console.log(`\n--- Hygiene & Deliverability Issues (${audit.issues.length}) ---`);
-        for (const issue of audit.issues) {
-          console.log(`[${issue.severity.toUpperCase()}] ${issue.metric}: ${issue.count} (${issue.percentage}%)`);
-          console.log(`  ${issue.recommendation}\n`);
-        }
+      if (values.format === 'json') {
+        console.log(JSON.stringify(cleanResult.stats, null, 2));
       } else {
-        console.log(`\nNo critical hygiene issues detected.\n`);
+        console.log(`\n=== GTM Lead Data Cleaning Report ===\n`);
+        console.log(`Input Leads:    ${cleanResult.stats.inputCount}`);
+        console.log(`Retained Leads: ${cleanResult.stats.cleanedCount} (${(cleanResult.stats.retentionRate * 100).toFixed(1)}%)`);
+        console.log(`Filtered Leads: ${cleanResult.stats.rejectedCount}\n`);
+
+        if (cleanResult.rejected.length > 0) {
+          console.log(`--- Rejection Sample ---`);
+          for (const item of cleanResult.rejected.slice(0, 5)) {
+            const emailKey = Object.keys(item.record).find(k => k.toLowerCase().includes('email'));
+            const emailVal = emailKey ? item.record[emailKey] : '(no email)';
+            console.log(`- ${emailVal}: ${item.reason}`);
+          }
+          console.log('');
+        }
+
+        if (values.output) {
+          console.log(`Cleaned CSV saved to: ${values.output}\n`);
+        } else if (!values.output && values.format !== 'json') {
+          console.log(`Tip: Pass -o <clean-leads.csv> to write the cleaned dataset directly.\n`);
+        }
+      }
+    } else {
+      const audit = auditLeadData(records);
+
+      if (values.format === 'json') {
+        console.log(JSON.stringify(audit, null, 2));
+      } else {
+        console.log(`\n=== GTM Lead Data Hygiene Audit ===\n`);
+        console.log(`File:              ${path.basename(fullPath)}`);
+        console.log(`Total Records:     ${audit.totalRecords.toLocaleString()}`);
+        console.log(`Emails Evaluated:  ${audit.summary.totalEmailsAnalyzed.toLocaleString()}`);
+        console.log(`Phones Evaluated:  ${audit.summary.totalPhonesAnalyzed.toLocaleString()}\n`);
+
+        console.log(`--- Field Fill Rates ---`);
+        for (const [col, stats] of Object.entries(audit.fields)) {
+          const pct = ((stats.populated / audit.totalRecords) * 100).toFixed(1);
+          console.log(`  ${col.padEnd(20)}: ${stats.populated} populated (${pct}%)`);
+        }
+
+        if (audit.issues.length > 0) {
+          console.log(`\n--- Hygiene & Deliverability Issues (${audit.issues.length}) ---`);
+          for (const issue of audit.issues) {
+            console.log(`[${issue.severity.toUpperCase()}] ${issue.metric}: ${issue.count} (${issue.percentage}%)`);
+            console.log(`  ${issue.recommendation}\n`);
+          }
+          console.log(`Tip: Run with --clean -o <output.csv> to strip deliverability risks before sequencing.\n`);
+        } else {
+          console.log(`\nNo critical hygiene issues detected.\n`);
+        }
       }
     }
   } else {
