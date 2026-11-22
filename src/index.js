@@ -1,19 +1,21 @@
 /**
  * GTM Pipeline Audit Engine
- * Evaluates waterfall order, cost efficiency, filter gating, and data waste in outbound enrichment pipelines.
+ * Evaluates waterfall order, cost efficiency, filter gating, waterfall cascade dynamics,
+ * and automated optimization recommendations for go-to-market outbound pipelines.
  */
 
 export function analyzePipeline(pipeline) {
   const name = pipeline.name || 'Untitled Pipeline';
   const volume = Number(pipeline.volume) || 1000;
-  const stages = pipeline.stages || [];
+  const stages = (pipeline.stages || []).map(s => ({ ...s }));
 
   let currentVolume = volume;
   let totalCost = 0;
   let stageResults = [];
   let findings = [];
 
-  // Check 1: Are cheap filters placed before expensive LLM / phone scrapers?
+  let activeWaterfallGroup = null;
+  let waterfallUnresolvedVolume = currentVolume;
   let seenExpensiveStage = false;
   let expensiveStageName = '';
 
@@ -24,8 +26,8 @@ export function analyzePipeline(pipeline) {
     const dropUnmatched = Boolean(stage.dropUnmatched);
     const isEnrichment = stage.type === 'enrichment';
     const isFilter = stage.type === 'filter';
+    const waterfallGroup = stage.waterfallGroup || null;
 
-    // Track expensive stages (> $0.03 per call)
     if (unitCost >= 0.03 && !seenExpensiveStage) {
       seenExpensiveStage = true;
       expensiveStageName = stage.name || `Stage #${i + 1}`;
@@ -40,11 +42,23 @@ export function analyzePipeline(pipeline) {
       });
     }
 
-    // Cost calculation: charged per input call or per successful match?
-    const chargePolicy = stage.chargePolicy || 'per_attempt'; // 'per_attempt' or 'per_hit'
-    const callsMade = currentVolume;
-    const hits = Math.round(currentVolume * hitRate);
-    
+    let incomingForStage = currentVolume;
+    if (waterfallGroup) {
+      if (activeWaterfallGroup === waterfallGroup) {
+        incomingForStage = waterfallUnresolvedVolume;
+      } else {
+        activeWaterfallGroup = waterfallGroup;
+        waterfallUnresolvedVolume = currentVolume;
+        incomingForStage = currentVolume;
+      }
+    } else {
+      activeWaterfallGroup = null;
+    }
+
+    const callsMade = incomingForStage;
+    const hits = Math.round(incomingForStage * hitRate);
+
+    const chargePolicy = stage.chargePolicy || 'per_attempt';
     let stageCost = 0;
     if (chargePolicy === 'per_hit') {
       stageCost = hits * unitCost;
@@ -54,23 +68,30 @@ export function analyzePipeline(pipeline) {
 
     totalCost += stageCost;
 
+    if (waterfallGroup) {
+      waterfallUnresolvedVolume = Math.max(0, waterfallUnresolvedVolume - hits);
+    }
+
     stageResults.push({
       name: stage.name || `Stage #${i + 1}`,
       type: stage.type || 'enrichment',
+      waterfallGroup,
       callsMade,
       hits,
       unitCost,
+      chargePolicy,
       stageCost,
       remainingVolume: dropUnmatched ? hits : currentVolume
     });
 
     if (dropUnmatched) {
       currentVolume = hits;
+      if (waterfallGroup) {
+        waterfallUnresolvedVolume = currentVolume;
+      }
     }
   }
 
-  // Check 2: Waterfall ordering efficiency
-  // If consecutive stages are waterfall fallbacks for the same field, check if lower cost per hit is prioritized
   for (let i = 0; i < stages.length - 1; i++) {
     const s1 = stages[i];
     const s2 = stages[i + 1];
@@ -78,7 +99,7 @@ export function analyzePipeline(pipeline) {
     if (s1.waterfallGroup && s1.waterfallGroup === s2.waterfallGroup) {
       const c1 = Number(s1.costPerCall || 0);
       const c2 = Number(s2.costPerCall || 0);
-      if (c1 > c2 && c2 > 0) {
+      if (c1 > c2 && c2 >= 0) {
         findings.push({
           severity: 'improvement',
           stage: s1.name,
@@ -107,6 +128,59 @@ export function analyzePipeline(pipeline) {
   };
 }
 
+export function optimizePipeline(pipeline) {
+  const optimized = JSON.parse(JSON.stringify(pipeline));
+  const stages = optimized.stages || [];
+
+  const earlyFilters = [];
+  const otherStages = [];
+
+  for (const s of stages) {
+    if (s.type === 'filter' && (Number(s.costPerCall) === 0 || !s.costPerCall) && s.dropUnmatched) {
+      earlyFilters.push(s);
+    } else {
+      otherStages.push(s);
+    }
+  }
+
+  const reorderedStages = [];
+  let i = 0;
+  while (i < otherStages.length) {
+    const current = otherStages[i];
+    if (current.waterfallGroup) {
+      const groupName = current.waterfallGroup;
+      const groupMembers = [];
+      while (i < otherStages.length && otherStages[i].waterfallGroup === groupName) {
+        groupMembers.push(otherStages[i]);
+        i++;
+      }
+      groupMembers.sort((a, b) => Number(a.costPerCall || 0) - Number(b.costPerCall || 0));
+      reorderedStages.push(...groupMembers);
+    } else {
+      reorderedStages.push(current);
+      i++;
+    }
+  }
+
+  optimized.stages = [...earlyFilters, ...reorderedStages];
+  return optimized;
+}
+
+export function comparePipelines(originalPipeline, optimizedPipeline) {
+  const originalReport = analyzePipeline(originalPipeline);
+  const optimizedReport = analyzePipeline(optimizedPipeline);
+
+  const costSavings = originalReport.totalCost - optimizedReport.totalCost;
+  const percentageSavings = originalReport.totalCost > 0 ? (costSavings / originalReport.totalCost) * 100 : 0;
+
+  return {
+    original: originalReport,
+    optimized: optimizedReport,
+    costSavings,
+    percentageSavings
+  };
+}
+
 export function generateMarkdownReport(result) {
   let md = `# GTM Pipeline Audit Report: ${result.name}\n\n`;
   md += `| Metric | Value |\n`;
@@ -119,10 +193,11 @@ export function generateMarkdownReport(result) {
   md += `| Cost Per Matched Lead | $${result.effectiveCostPerMatchedLead.toFixed(4)} |\n\n`;
 
   md += `## Stage Breakdown\n\n`;
-  md += `| Stage | Type | Calls | Hits | Cost/Call | Stage Total |\n`;
-  md += `| :--- | :--- | :--- | :--- | :--- | :--- |\n`;
+  md += `| Stage | Type | Group | Calls | Hits | Cost/Call | Stage Total |\n`;
+  md += `| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n`;
   for (const s of result.stageResults) {
-    md += `| ${s.name} | ${s.type} | ${s.callsMade.toLocaleString()} | ${s.hits.toLocaleString()} | $${s.unitCost.toFixed(3)} | $${s.stageCost.toFixed(2)} |\n`;
+    const group = s.waterfallGroup || '-';
+    md += `| ${s.name} | ${s.type} | ${group} | ${s.callsMade.toLocaleString()} | ${s.hits.toLocaleString()} | $${s.unitCost.toFixed(3)} | $${s.stageCost.toFixed(2)} |\n`;
   }
 
   if (result.findings.length > 0) {

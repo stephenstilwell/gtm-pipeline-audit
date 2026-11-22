@@ -1,25 +1,26 @@
 # GTM Pipeline Audit
 
-`gtm-pipeline-audit` is a lightweight, zero-dependency command-line utility and library designed for GTM engineers and RevOps builders. It analyzes multi-stage enrichment pipelines and waterfalls (e.g., Clay tables, n8n workflows, Apollo waterfalls, or internal enrichment scripts) to identify cost waste, ordering defects, and qualification leakage before running outbound batches.
+`gtm-pipeline-audit` is a lightweight, zero-dependency command-line utility and library designed for GTM engineers, RevOps builders, and growth hackers. It models and audits multi-stage enrichment pipelines and waterfalls (e.g. Clay tables, Apollo waterfalls, n8n workflows, or internal enrichment microservices) to identify budget waste, detect ordering defects, and automatically generate optimized configurations.
 
 ## The Problem
 
-Modern GTM engineering relies heavily on cascading enrichment providers (waterfalls) and automated LLM qualification steps. Teams frequently introduce subtle architecture bugs that waste budget:
-1. **Late Filtering:** Calling expensive phone or email discovery APIs on 5,000 raw leads before running simple, free filters (e.g., geography, company size, or domain exclusions).
-2. **Suboptimal Waterfall Sequences:** Placing high-cost API endpoints before lower-cost, high-coverage endpoints for the same field.
+Modern GTM engineering workflows rely heavily on cascading enrichment providers (waterfalls) and automated LLM qualification steps. Teams frequently introduce subtle architecture bugs that waste budget:
+1. **Late Filtering:** Calling expensive phone or email discovery APIs on raw leads before running free qualification filters (e.g., ICP geography, company size, or domain exclusions).
+2. **Suboptimal Waterfall Sequences:** Placing high-cost API endpoints before lower-cost, high-coverage endpoints in fallback cascades.
 3. **Hidden Unit Economics:** Lack of clarity on true cost per qualified, reachable lead versus nominal cost per API call.
 
 ## Features
 
-- **Waterfall Sequence Verification:** Checks that fallback chains query lower-cost providers first.
+- **Waterfall Cascade Simulation:** Accurately models waterfall fallback routing where subsequent providers are only invoked for unresolved misses.
 - **Filter Leakage Detection:** Warns when free filters are placed after paid enrichment stages.
+- **Automated Pipeline Optimizer (`--optimize`):** Automatically hoists qualification filters and re-sequences fallback cascades by ascending cost-per-attempt, projecting net cost savings and percentage reductions.
 - **Unit Economics Modeling:** Computes total cost, effective cost per input record, and cost per qualified matched lead.
 - **Flexible Reporting:** Outputs summary metrics in terminal CLI format, JSON, or Markdown tables.
 - **Zero Dependencies:** Built with native Node.js ES modules and the built-in test runner.
 
 ## Quickstart
 
-### 1. Run with Node.js
+### 1. Audit an existing pipeline
 
 Requires Node.js 20 or newer.
 
@@ -28,12 +29,19 @@ cd d:\Development\gtm-pipeline-audit
 node bin/cli.js examples/unoptimized-pipeline.json
 ```
 
-To output a Markdown table:
+### 2. Run automated optimization & savings analysis
+
 ```sh
-node bin/cli.js examples/unoptimized-pipeline.json --format markdown
+node bin/cli.js examples/unoptimized-pipeline.json --optimize
 ```
 
-To run unit tests:
+Save the optimized configuration to a new JSON file:
+```sh
+node bin/cli.js examples/unoptimized-pipeline.json --optimize -o examples/optimized-pipeline.json
+```
+
+### 3. Run unit tests
+
 ```sh
 npm test
 ```
