@@ -1,0 +1,31 @@
+{
+  "name": "Outbound Prospecting Waterfall",
+  "volume": 5000,
+  "stages": [
+    {
+      "name": "Premium Mobile Phone Finder",
+      "type": "enrichment",
+      "waterfallGroup": "phone",
+      "costPerCall": 0.10,
+      "hitRate": 0.40,
+      "chargePolicy": "per_attempt",
+      "dropUnmatched": false
+    },
+    {
+      "name": "Standard Phone Lookup",
+      "type": "enrichment",
+      "waterfallGroup": "phone",
+      "costPerCall": 0.03,
+      "hitRate": 0.35,
+      "chargePolicy": "per_attempt",
+      "dropUnmatched": false
+    },
+    {
+      "name": "ICP Geography & Headcount Filter",
+      "type": "filter",
+      "costPerCall": 0,
+      "hitRate": 0.60,
+      "dropUnmatched": true
+    }
+  ]
+}
