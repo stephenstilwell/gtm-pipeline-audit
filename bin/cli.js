@@ -7,6 +7,7 @@ import {
   optimizePipeline,
   comparePipelines,
   generateMarkdownReport,
+  generateHtmlReport,
   parseCSV,
   auditLeadData,
   cleanLeadData,
@@ -52,14 +53,22 @@ if (values.usePreset) {
     process.exit(1);
   }
 
-  if (values.output) {
+  if (values.output && !values.format.includes('html')) {
     fs.writeFileSync(path.resolve(process.cwd(), values.output), JSON.stringify(preset, null, 2), 'utf8');
     console.log(`\nPreset "${values.usePreset}" exported to ${values.output}\n`);
     process.exit(0);
   }
 
   const result = analyzePipeline(preset);
-  if (values.format === 'markdown') {
+  if (values.format === 'html') {
+    const html = generateHtmlReport(result);
+    if (values.output) {
+      fs.writeFileSync(path.resolve(process.cwd(), values.output), html, 'utf8');
+      console.log(`\nHTML report written to: ${values.output}\n`);
+    } else {
+      console.log(html);
+    }
+  } else if (values.format === 'markdown') {
     console.log(generateMarkdownReport(result));
   } else {
     console.log(`\n=== GTM Pipeline Audit Preset: ${preset.name} ===\n`);
@@ -83,12 +92,12 @@ Supported Input:
 
 Options:
   -f, --file        Path to input file (.json or .csv)
-  --format          Output format: text | json | markdown (default: text)
+  --format          Output format: text | json | markdown | html (default: text)
   --optimize        Calculate automated optimization & projected budget savings (JSON only)
   --clean           Clean CSV lead list (remove personal freemails, generic inboxes, duplicates)
   --presets         List built-in provider market rates and reference waterfall templates
   --usePreset <id>  Inspect or export a reference waterfall template (e.g. b2b-email-discovery)
-  -o, --output      Save optimized JSON, cleaned CSV, or exported preset to a specified path
+  -o, --output      Save optimized JSON, cleaned CSV, or exported HTML to a specified path
   -h, --help        Show this help message
 `);
   process.exit(0);
@@ -196,7 +205,15 @@ try {
     } else {
       const result = analyzePipeline(pipeline);
 
-      if (values.format === 'json') {
+      if (values.format === 'html') {
+        const html = generateHtmlReport(result);
+        if (values.output) {
+          fs.writeFileSync(path.resolve(process.cwd(), values.output), html, 'utf8');
+          console.log(`\nStandalone HTML report written to: ${values.output}\n`);
+        } else {
+          console.log(html);
+        }
+      } else if (values.format === 'json') {
         console.log(JSON.stringify(result, null, 2));
       } else if (values.format === 'markdown') {
         console.log(generateMarkdownReport(result));
@@ -214,7 +231,7 @@ try {
             console.log(`[${finding.severity.toUpperCase()}] ${finding.title}`);
             console.log(`  ${finding.message}\n`);
           }
-          console.log(`Tip: Run with --optimize to see projected savings after automated re-sequencing.\n`);
+          console.log(`Tip: Run with --format html -o report.html for a visual executive dashboard.\n`);
         } else {
           console.log(`\nNo configuration issues found. Waterfall sequence is optimal.\n`);
         }

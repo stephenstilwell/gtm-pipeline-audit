@@ -13,6 +13,7 @@ Modern GTM engineering workflows rely heavily on cascading enrichment providers 
 ## Features
 
 - **JSON Pipeline Audit:** Evaluates waterfall fallback cascades, detects late filters, and models cost per input record vs. cost per successfully enriched lead.
+- **Standalone Visual HTML Reports (`--format html`):** Generates self-contained executive HTML dashboards with KPI cards, waterfall cascade flow tables, and highlighted governance alerts.
 - **Automated Pipeline Optimizer (`--optimize`):** Automatically hoists qualification filters and reorders waterfalls by ascending cost-per-attempt, projecting net budget savings.
 - **Provider Benchmark Catalog & Presets (`--presets`, `--usePreset`):** Built-in industry benchmarks for email finders, direct dials, and LLM classifiers. Export production-grade waterfall templates with a single flag.
 - **CSV Lead Data Hygiene Audit:** Directly audits exported CSV batches (from Clay, Apollo, ZoomInfo, etc.) reporting column fill rates, personal freemail domains, generic role inboxes, and malformed phone numbers.
@@ -23,34 +24,16 @@ Modern GTM engineering workflows rely heavily on cascading enrichment providers 
 
 Requires Node.js 20 or newer.
 
-### 1. View Provider Benchmarks & Reference Templates
+### 1. Generate an Executive HTML Audit Dashboard
+
+```sh
+node bin/cli.js examples/unoptimized-pipeline.json --format html -o reports/audit-report.html
+```
+
+### 2. View Provider Benchmarks & Reference Templates
 
 ```sh
 node bin/cli.js --presets
-```
-
-Outputs:
-```text
-=== GTM Pipeline Audit: Provider & Waterfall Presets ===
-
---- Standard Waterfall Presets ---
-  ID: b2b-email-discovery
-  Name: Optimized B2B Email Waterfall (Stages: 4)
-
-  ID: b2b-mobile-discovery
-  Name: Cost-Optimized Mobile Waterfall (Stages: 4)
-
---- Industry Benchmark Providers ---
-  [cognism_phone] Cognism Mobile: $0.25/per match (~65% hit rate)
-  [zoominfo_phone] ZoomInfo Direct Dial: $0.35/per match (~60% hit rate)
-  [datagma_phone] Datagma Mobile: $0.08/per attempt (~45% hit rate)
-  [lusha_phone] Lusha Phone: $0.15/per match (~48% hit rate)
-  [prospeo_email] Prospeo Email: $0.02/per attempt (~60% hit rate)
-  [findymail_email] Findymail Verified Email: $0.03/per match (~65% hit rate)
-  [hunter_email] Hunter.io Email: $0.015/per attempt (~50% hit rate)
-  [apollo_email] Apollo Email Search: $0.01/per attempt (~55% hit rate)
-  [gemini_flash_classifier] Gemini Flash ICP Classifier: $0.001/per attempt (~85% hit rate)
-  [gpt4o_mini_enricher] GPT-4o Mini Persona Scorer: $0.003/per attempt (~85% hit rate)
 ```
 
 Export an optimized email discovery waterfall template to edit:
@@ -58,7 +41,7 @@ Export an optimized email discovery waterfall template to edit:
 node bin/cli.js --usePreset b2b-email-discovery -o my-waterfall.json
 ```
 
-### 2. Audit Lead Data from CSV
+### 3. Audit Lead Data from CSV
 
 ```sh
 node bin/cli.js examples/csv/leads-sample.csv
@@ -92,7 +75,7 @@ Phones Evaluated:  7
   2 records (28.6%) have fewer than 7 digits. These should be cleaned before passing to SDR dialers or SMS sequences.
 ```
 
-### 3. Clean & Sanitize Lead CSV Before Outbound
+### 4. Clean & Sanitize Lead CSV Before Outbound
 
 Clean out invalid freemails, generic inboxes, and duplicates, outputting the clean leads:
 
@@ -100,13 +83,13 @@ Clean out invalid freemails, generic inboxes, and duplicates, outputting the cle
 node bin/cli.js examples/csv/leads-sample.csv --clean -o cleaned-leads.csv
 ```
 
-### 4. Audit Pipeline Architecture & Waterfalls (JSON)
+### 5. Audit Pipeline Architecture & Waterfalls (JSON)
 
 ```sh
 node bin/cli.js examples/unoptimized-pipeline.json
 ```
 
-### 5. Automatically Optimize Pipeline Configuration
+### 6. Automatically Optimize Pipeline Configuration
 
 ```sh
 node bin/cli.js examples/unoptimized-pipeline.json --optimize
@@ -117,7 +100,7 @@ Save the optimized configuration to a new file:
 node bin/cli.js examples/unoptimized-pipeline.json --optimize -o examples/optimized-pipeline.json
 ```
 
-### 6. Run Unit Tests
+### 7. Run Unit Tests
 
 ```sh
 npm test
