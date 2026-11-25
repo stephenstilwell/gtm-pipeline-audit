@@ -89,6 +89,14 @@ node bin/cli.js examples/csv/leads-sample.csv --clean -o cleaned-leads.csv
 node bin/cli.js examples/unoptimized-pipeline.json
 ```
 
+Use `--volume` to model a different batch size from the same pipeline file. The override applies to the audit and to both sides of an `--optimize` comparison. If you save the optimized definition with `-o`, it contains the overridden volume.
+
+```sh
+node bin/cli.js examples/unoptimized-pipeline.json --volume 10000 --max-cost 1000 --format json
+```
+
+The example projects $1,180.00 for 10,000 records and exits with status `2` against the $1,000 budget.
+
 ### 6. Automatically Optimize Pipeline Configuration
 
 ```sh

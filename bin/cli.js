@@ -23,6 +23,7 @@ const options = {
   clean: { type: 'boolean', default: false },
   presets: { type: 'boolean', default: false },
   usePreset: { type: 'string' },
+  volume: { type: 'string' },
   'max-cost': { type: 'string' },
   output: { type: 'string', short: 'o' },
   help: { type: 'boolean', short: 'h' }
@@ -31,10 +32,16 @@ const options = {
 const { values, positionals } = parseArgs({ options, allowPositionals: true });
 const targetPath = values.file || positionals[0];
 const costLimit = values['max-cost'];
+const volumeOverride = values.volume;
+const isPipelineFile = path.extname(targetPath || '').toLowerCase() === '.json' &&
+  !values.clean && !values.presets && values.usePreset === undefined;
 
-if (costLimit !== undefined && !values.help &&
-    (path.extname(targetPath || '').toLowerCase() !== '.json' || values.optimize || values.clean || values.presets || values.usePreset !== undefined)) {
+if (costLimit !== undefined && !values.help && (!isPipelineFile || values.optimize)) {
   console.error('Error: --max-cost requires a JSON pipeline audit without --optimize, --clean, --presets, or --usePreset.');
+  process.exit(1);
+}
+if (volumeOverride !== undefined && !values.help && !isPipelineFile) {
+  console.error('Error: --volume requires a JSON pipeline file.');
   process.exit(1);
 }
 
@@ -103,6 +110,7 @@ Options:
   -f, --file        Path to input file (.json or .csv)
   --format          Output format: text | json | markdown | html (default: text)
   --optimize        Calculate automated optimization & projected budget savings (JSON only)
+  --volume <count>  Override the projected input volume for a JSON pipeline file
   --max-cost <usd>  Exit 2 when the projected total exceeds this budget (JSON pipeline audit only)
   --clean           Clean CSV lead list (remove personal freemails, generic inboxes, duplicates)
   --presets         List built-in provider market rates and reference waterfall templates
@@ -203,7 +211,17 @@ try {
     }
   } else {
     // JSON pipeline audit
-    const pipeline = JSON.parse(content);
+    let pipeline = JSON.parse(content);
+    if (volumeOverride !== undefined) {
+      const volume = Number(volumeOverride);
+      if (!/^\d+$/.test(volumeOverride) || !Number.isSafeInteger(volume) || volume < 1) {
+        throw new Error('--volume must be a positive whole number within the supported integer range.');
+      }
+      if (!Array.isArray(pipeline?.stages)) {
+        throw new Error('--volume requires a pipeline with a stages array.');
+      }
+      pipeline = { ...pipeline, volume };
+    }
 
     if (values.optimize) {
       const optimized = optimizePipeline(pipeline);

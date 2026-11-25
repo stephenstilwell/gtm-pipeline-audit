@@ -24,6 +24,35 @@ test('max-cost gates projected spend while preserving the JSON audit report', ()
   }
 });
 
+test('volume override applies to projected spend, the budget gate, and both optimization scenarios', () => {
+  const run = (...args) => spawnSync(process.execPath, ['bin/cli.js', 'examples/unoptimized-pipeline.json',
+    '--format', 'json', '--volume', '10000', ...args], { encoding: 'utf8' });
+  const audit = run('--max-cost', '1000');
+  assert.equal(audit.status, 2, audit.stderr);
+  const report = JSON.parse(audit.stdout);
+  assert.equal(report.volume, 10000);
+  assert.equal(report.budget.projectedCost, 1180);
+
+  const comparison = run('--optimize');
+  assert.equal(comparison.status, 0, comparison.stderr);
+  const { original, optimized } = JSON.parse(comparison.stdout);
+  assert.equal(original.volume, 10000);
+  assert.equal(optimized.volume, 10000);
+});
+
+test('volume override rejects unsupported modes and fractional or unsafe record counts', () => {
+  for (const args of [
+    ['examples/unoptimized-pipeline.json', '--volume', '0'],
+    ['examples/unoptimized-pipeline.json', '--volume', '5.5'],
+    ['examples/unoptimized-pipeline.json', '--volume', '9007199254740992'],
+    ['examples/csv/leads-sample.csv', '--volume', '10000'],
+  ]) {
+    const run = spawnSync(process.execPath, ['bin/cli.js', ...args], { encoding: 'utf8' });
+    assert.equal(run.status, 1);
+    assert.match(run.stderr, /--volume/);
+  }
+});
+
 test('detects filter placed after expensive enrichment', () => {
   const pipeline = {
     name: 'Test Pipeline',
