@@ -23,11 +23,20 @@ const options = {
   clean: { type: 'boolean', default: false },
   presets: { type: 'boolean', default: false },
   usePreset: { type: 'string' },
+  'max-cost': { type: 'string' },
   output: { type: 'string', short: 'o' },
   help: { type: 'boolean', short: 'h' }
 };
 
 const { values, positionals } = parseArgs({ options, allowPositionals: true });
+const targetPath = values.file || positionals[0];
+const costLimit = values['max-cost'];
+
+if (costLimit !== undefined && !values.help &&
+    (path.extname(targetPath || '').toLowerCase() !== '.json' || values.optimize || values.clean || values.presets || values.usePreset !== undefined)) {
+  console.error('Error: --max-cost requires a JSON pipeline audit without --optimize, --clean, --presets, or --usePreset.');
+  process.exit(1);
+}
 
 if (values.presets) {
   const { providers, waterfalls } = listPresets();
@@ -94,6 +103,7 @@ Options:
   -f, --file        Path to input file (.json or .csv)
   --format          Output format: text | json | markdown | html (default: text)
   --optimize        Calculate automated optimization & projected budget savings (JSON only)
+  --max-cost <usd>  Exit 2 when the projected total exceeds this budget (JSON pipeline audit only)
   --clean           Clean CSV lead list (remove personal freemails, generic inboxes, duplicates)
   --presets         List built-in provider market rates and reference waterfall templates
   --usePreset <id>  Inspect or export a reference waterfall template (e.g. b2b-email-discovery)
@@ -103,8 +113,25 @@ Options:
   process.exit(0);
 }
 
-const targetPath = values.file || positionals[0];
 const fullPath = path.resolve(process.cwd(), targetPath);
+
+function checkBudget(pipeline, result, limit) {
+  const maxCost = Number(limit);
+  if (!/^\d+(?:\.\d{1,2})?$/.test(limit) || !Number.isSafeInteger(Math.round(maxCost * 100))) {
+    throw new Error('--max-cost must be a nonnegative dollar amount with up to two decimal places.');
+  }
+  if (!Array.isArray(pipeline.stages) || (pipeline.volume != null &&
+      (!Number.isSafeInteger(Number(pipeline.volume)) || Number(pipeline.volume) <= 0))) {
+    throw new Error('Budget checks require a stages array and a positive whole-number volume when supplied.');
+  }
+  if (!Number.isFinite(result.totalCost) || result.stageResults.some((stage) =>
+    !Number.isFinite(stage.unitCost) || stage.unitCost < 0 || !Number.isFinite(stage.hits) ||
+    !['per_attempt', 'per_hit'].includes(stage.chargePolicy))) {
+    throw new Error('Budget checks require finite nonnegative stage costs, valid hit rates, and supported charge policies.');
+  }
+  const projectedCost = Number(result.totalCost.toFixed(2));
+  return { maxCost, projectedCost, exceeded: projectedCost > maxCost };
+}
 
 try {
   const content = fs.readFileSync(fullPath, 'utf8');
@@ -204,6 +231,7 @@ try {
       }
     } else {
       const result = analyzePipeline(pipeline);
+      const budget = costLimit === undefined ? undefined : checkBudget(pipeline, result, costLimit);
 
       if (values.format === 'html') {
         const html = generateHtmlReport(result);
@@ -214,7 +242,7 @@ try {
           console.log(html);
         }
       } else if (values.format === 'json') {
-        console.log(JSON.stringify(result, null, 2));
+        console.log(JSON.stringify(budget ? { ...result, budget } : result, null, 2));
       } else if (values.format === 'markdown') {
         console.log(generateMarkdownReport(result));
       } else {
@@ -235,6 +263,11 @@ try {
         } else {
           console.log(`\nNo configuration issues found. Waterfall sequence is optimal.\n`);
         }
+      }
+      if (budget) {
+        const status = budget.exceeded ? 'exceeds' : 'is within';
+        console.error(`Projected cost $${budget.projectedCost.toFixed(2)} ${status} budget $${budget.maxCost.toFixed(2)}.`);
+        if (budget.exceeded) process.exitCode = 2;
       }
     }
   }

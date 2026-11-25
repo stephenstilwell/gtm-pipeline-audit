@@ -100,7 +100,17 @@ Save the optimized configuration to a new file:
 node bin/cli.js examples/unoptimized-pipeline.json --optimize -o examples/optimized-pipeline.json
 ```
 
-### 7. Run Unit Tests
+### 7. Gate projected spend in CI
+
+Use `--max-cost` on a JSON pipeline definition to check its projected spend at the configured input volume. The example projects $590.00 and exits with status `2` because the budget is $500.00.
+
+```sh
+node bin/cli.js examples/unoptimized-pipeline.json --max-cost 500 --format json
+```
+
+The check compares the projected total rounded to cents with the dollar limit. An audit at or below the limit exits `0`. Invalid input exits `1`. The audit report is still generated when spend exceeds the limit. JSON output includes `budget.maxCost`, `budget.projectedCost`, and `budget.exceeded`, while the budget message goes to standard error. To check an optimized pipeline, save it with `--optimize -o` and audit that file with `--max-cost`.
+
+### 8. Run Unit Tests
 
 ```sh
 npm test

@@ -1,6 +1,28 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { analyzePipeline, optimizePipeline, comparePipelines } from '../src/index.js';
+
+test('max-cost gates projected spend while preserving the JSON audit report', () => {
+  for (const [limit, expectedExit] of [['589.99', 2], ['590', 0], ['600', 0]]) {
+    const run = spawnSync(process.execPath, ['bin/cli.js', 'examples/unoptimized-pipeline.json',
+      '--format', 'json', '--max-cost', limit], { encoding: 'utf8' });
+    assert.equal(run.status, expectedExit, run.stderr);
+    assert.deepEqual(JSON.parse(run.stdout).budget, {
+      maxCost: Number(limit), projectedCost: 590, exceeded: expectedExit === 2
+    });
+    assert.match(run.stderr, /Projected cost/);
+  }
+  for (const args of [
+    ['examples/unoptimized-pipeline.json', '--max-cost', '0.001'],
+    ['examples/unoptimized-pipeline.json', '--max-cost', '400', '--optimize'],
+    ['examples/csv/leads-sample.csv', '--max-cost', '400']
+  ]) {
+    const run = spawnSync(process.execPath, ['bin/cli.js', ...args], { encoding: 'utf8' });
+    assert.equal(run.status, 1);
+    assert.match(run.stderr, /--max-cost/);
+  }
+});
 
 test('detects filter placed after expensive enrichment', () => {
   const pipeline = {
